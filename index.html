@@ -214,12 +214,15 @@
   // GENERATION
   function genLevel(lvl) {
     stars = []; obstacles = []; platforms = []; particles = []; trailSegs = [];
-    player.x = W * 0.5; player.y = H * 0.85;
+    
+    // FIX: Empezar más arriba para tener tiempo de reaccionar
+    player.x = W * 0.5; 
+    player.y = H * 0.3; // Antes estaba en 0.85 (muy abajo)
+    
     player.vx = 0; player.vy = 0; player.trail = []; player.alive = true; player.glow = 1;
     game.level = lvl; game.combo = 0; game.comboTimer = 0;
-    // FIX: NO cambiar a transition, mantener playing para que responda inputs
     game.state = 'playing'; 
-    game.levelTrans = 0; // Sin transición visual que bloquee
+    game.levelTrans = 0;
     game.hueTarget = (220 + lvl * 17) % 360;
 
     const diff = Math.min(lvl, 45);
@@ -227,7 +230,10 @@
     const nObs = Math.floor(diff * 0.5);
     const nPlat = Math.floor(diff * 0.3);
 
+    // Estrellas
     for(let i=0; i<nStars; i++) stars.push({ x: 50+Math.random()*(W-100), y: 60+Math.random()*(H*0.6), r: 9+Math.random()*5, col:false, anim:0, ph:Math.random()*6.28, spd:1.2+Math.random() });
+    
+    // Obstáculos
     for(let i=0; i<nObs; i++) {
       const mov = Math.random() < 0.5;
       obstacles.push({
@@ -239,10 +245,12 @@
         ph: Math.random()*6.28, rot: Math.random()*Math.PI, rotSpd: mov?0:(Math.random()-0.5)*0.015*(1+diff*0.02)
       });
     }
+    
+    // Plataformas
     for(let i=0; i<nPlat; i++) platforms.push({ x: 40+Math.random()*(W-80), y: 90+Math.random()*(H*0.45), w: 45+Math.random()*75, h: 5, a: 0.25 });
 
     document.getElementById('level-display').textContent = `NIVEL ${lvl}`;
-}
+    }
   // PHYSICS
   function update(dt) {
     if (game.state !== 'playing') return;
