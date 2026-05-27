@@ -135,7 +135,9 @@
   
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
-  let W, H, dpr;
+  let W = window.innerWidth || 800;
+  let H = window.innerHeight || 600;
+  let dpr;
 
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -186,7 +188,7 @@
 
   // PLAYER
   const player = {
-    x: 0, y: 0, vx: 0, vy: 0, r: 11,
+    x: W * 0.5, y: H * 0.3, vx: 0, vy: 0, r: 11,
     trail: [], maxTrail: 70, alive: true,
     phase: 0, glow: 1
   };
@@ -377,6 +379,12 @@
     ctx.save();
     if(game.shake > 0) { ctx.translate((Math.random()-0.5)*game.shake, (Math.random()-0.5)*game.shake); game.shake *= 0.88; if(game.shake<0.1) game.shake=0; }
 
+    // FIX: Validar que W y H sean números válidos
+    if (!isFinite(W) || !isFinite(H) || W <= 0 || H <= 0) {
+      W = window.innerWidth || 800;
+      H = window.innerHeight || 600;
+    }
+
     const bg = ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,W*0.85);
     bg.addColorStop(0, `hsl(${game.hue},25%,7%)`); bg.addColorStop(1, `hsl(${(game.hue+35)%360},18%,2.5%)`);
     ctx.fillStyle = bg; ctx.fillRect(-20,-20,W+40,H+40);
@@ -411,25 +419,33 @@
         if(s.col){if(s.anim>0){s.anim-=0.03;ctx.beginPath();ctx.arc(s.x,s.y,s.r*(1+(1-s.anim)*2.5),0,Math.PI*2);ctx.fillStyle=`hsla(${game.hue+20},75%,65%,${s.anim})`;ctx.fill();}continue;}
         const pu = 0.75+0.25*Math.sin(s.ph);
         ctx.beginPath();ctx.arc(s.x,s.y,s.r*2.5*pu,0,Math.PI*2);ctx.fillStyle=`hsla(${game.hue+20},75%,55%,0.08)`;ctx.fill();
-        ctx.beginPath();ctx.arc(s.x,s.y,s.r*pu,0,Math.PI*2);
-        const sg=ctx.createRadialGradient(s.x,s.y,0,s.x,s.y,s.r*pu);
-        sg.addColorStop(0,`hsla(${game.hue+20},85%,90%,0.95)`);sg.addColorStop(1,`hsla(${game.hue+20},70%,50%,0)`);
-        ctx.fillStyle=sg;ctx.shadowColor=`hsla(${game.hue+20},75%,60%,0.8)`;ctx.shadowBlur=18;ctx.fill();ctx.shadowBlur=0;
-        ctx.save();ctx.translate(s.x,s.y);ctx.rotate(s.ph*0.4);ctx.beginPath();ctx.moveTo(0,-s.r*0.55);ctx.lineTo(s.r*0.35,0);ctx.lineTo(0,s.r*0.55);ctx.lineTo(-s.r*0.35,0);ctx.closePath();ctx.fillStyle='rgba(255,255,255,0.65)';ctx.fill();ctx.restore();
+        
+        // FIX: Validar posiciones de estrellas
+        if (isFinite(s.x) && isFinite(s.y) && isFinite(s.r * pu)) {
+          ctx.beginPath();ctx.arc(s.x,s.y,s.r*pu,0,Math.PI*2);
+          const sg=ctx.createRadialGradient(s.x,s.y,0,s.x,s.y,s.r*pu);
+          sg.addColorStop(0,`hsla(${game.hue+20},85%,90%,0.95)`);sg.addColorStop(1,`hsla(${game.hue+20},70%,50%,0)`);
+          ctx.fillStyle=sg;ctx.shadowColor=`hsla(${game.hue+20},75%,60%,0.8)`;ctx.shadowBlur=18;ctx.fill();ctx.shadowBlur=0;
+          ctx.save();ctx.translate(s.x,s.y);ctx.rotate(s.ph*0.4);ctx.beginPath();ctx.moveTo(0,-s.r*0.55);ctx.lineTo(s.r*0.35,0);ctx.lineTo(0,s.r*0.55);ctx.lineTo(-s.r*0.35,0);ctx.closePath();ctx.fillStyle='rgba(255,255,255,0.65)';ctx.fill();ctx.restore();
+        }
       }
 
       if(player.alive){
         const pu=1+0.09*Math.sin(player.phase), r=player.r*pu;
         const ar=r*3.8*player.glow;
-        ctx.beginPath();ctx.arc(player.x,player.y,ar,0,Math.PI*2);
-        const ag=ctx.createRadialGradient(player.x,player.y,0,player.x,player.y,ar);
-        ag.addColorStop(0,`hsla(${game.hue},55%,75%,0.18)`);ag.addColorStop(1,'transparent');
-        ctx.fillStyle=ag;ctx.fill();
-        ctx.beginPath();ctx.arc(player.x,player.y,r,0,Math.PI*2);
-        const pg=ctx.createRadialGradient(player.x,player.y,0,player.x,player.y,r);
-        pg.addColorStop(0,'#ffffff');pg.addColorStop(0.35,`hsl(${game.hue},55%,88%)`);pg.addColorStop(1,`hsl(${game.hue},65%,60%)`);
-        ctx.fillStyle=pg;ctx.shadowColor=`hsl(${game.hue},75%,65%)`;ctx.shadowBlur=28*player.glow;ctx.fill();ctx.shadowBlur=0;
-        ctx.beginPath();ctx.arc(player.x-r*0.18,player.y-r*0.18,r*0.32,0,Math.PI*2);ctx.fillStyle='rgba(255,255,255,0.75)';ctx.fill();
+        
+        // FIX: Validar posiciones del jugador
+        if (isFinite(player.x) && isFinite(player.y) && isFinite(r)) {
+          ctx.beginPath();ctx.arc(player.x,player.y,ar,0,Math.PI*2);
+          const ag=ctx.createRadialGradient(player.x,player.y,0,player.x,player.y,ar);
+          ag.addColorStop(0,`hsla(${game.hue},55%,75%,0.18)`);ag.addColorStop(1,'transparent');
+          ctx.fillStyle=ag;ctx.fill();
+          ctx.beginPath();ctx.arc(player.x,player.y,r,0,Math.PI*2);
+          const pg=ctx.createRadialGradient(player.x,player.y,0,player.x,player.y,r);
+          pg.addColorStop(0,'#ffffff');pg.addColorStop(0.35,`hsl(${game.hue},55%,88%)`);pg.addColorStop(1,`hsl(${game.hue},65%,60%)`);
+          ctx.fillStyle=pg;ctx.shadowColor=`hsl(${game.hue},75%,65%)`;ctx.shadowBlur=28*player.glow;ctx.fill();ctx.shadowBlur=0;
+          ctx.beginPath();ctx.arc(player.x-r*0.18,player.y-r*0.18,r*0.32,0,Math.PI*2);ctx.fillStyle='rgba(255,255,255,0.75)';ctx.fill();
+        }
       }
 
       if(game.state==='transition' && game.levelTrans>0){
