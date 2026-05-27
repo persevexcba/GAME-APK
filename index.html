@@ -27,7 +27,6 @@
     z-index: 1;
   }
   
-  /* UI LAYER */
   #ui {
     position: fixed;
     top: 0; left: 0; right: 0;
@@ -99,29 +98,11 @@
     font-size: 15px;
     font-weight: 400;
     opacity: 0;
-    transition: opacity 0.2s, transform 0.2s;
+    transition: opacity 0.2s;
     text-shadow: 0 0 10px rgba(255,107,202,0.6);
   }
-  #combo-display.visible { opacity: 1; transform: scale(1.05); }
+  #combo-display.visible { opacity: 1; }
 
-  /* TRAIL HINT */
-  #trail-hint {
-    position: fixed;
-    bottom: 80px;
-    left: 0; right: 0;
-    text-align: center;
-    color: rgba(0,242,254,0.8);
-    font-size: 13px;
-    letter-spacing: 1px;
-    pointer-events: none;
-    z-index: 10;
-    opacity: 0;
-    transition: opacity 0.5s;
-    text-shadow: 0 0 10px rgba(0,242,254,0.5);
-  }
-  #trail-hint.visible { opacity: 1; }
-
-  /* MENUS */
   #menu, #gameover, #stats-screen {
     position: fixed;
     inset: 0;
@@ -212,8 +193,6 @@
   <div id="combo-display">COMBO x2</div>
 </div>
 
-<div id="trail-hint">💫 TU RASTRO SE CONVIERTE EN PLATAFORMA · REBOTA EN ÉL</div>
-
 <div id="menu">
   <h1>AURA</h1>
   <div class="subtitle">tu rastro es tu camino</div>
@@ -245,7 +224,7 @@
   
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
-  let W = 800, H = 600, dpr;
+  let W = window.innerWidth || 800, H = window.innerHeight || 600, dpr;
 
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -259,15 +238,16 @@
   window.addEventListener('resize', resize);
 
   // AUDIO
-  let audioCtx;
+  let audioCtx = null;
   function initAudio() {
     if (!audioCtx) {
       try {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         if (audioCtx.state === 'suspended') audioCtx.resume();
-      } catch(e) {}
+      } catch(e) { console.log('Audio init failed'); }
     }
   }
+  
   function playTone(freq, dur, type='sine', vol=0.08) {
     if (!audioCtx) return;
     try {
@@ -280,6 +260,7 @@
       o.start(); o.stop(audioCtx.currentTime + dur);
     } catch(e) {}
   }
+  
   const SFX = {
     collect: () => { playTone(523, 0.1); setTimeout(()=>playTone(659, 0.1), 40); setTimeout(()=>playTone(784, 0.15, 'sine', 0.06), 80); },
     bounce: () => playTone(400, 0.08, 'triangle', 0.05),
@@ -288,11 +269,14 @@
     pulse: () => playTone(320, 0.05, 'sine', 0.02)
   };
 
-  // PERSISTENT STATS
+  // STATS
   const defaultStats = { levels: 0, bestCombo: 0, totalStars: 0, totalScore: 0, bestLevel: 0 };
   let stats = JSON.parse(localStorage.getItem('aura_stats')) || defaultStats;
   
-  function saveStats() { localStorage.setItem('aura_stats', JSON.stringify(stats)); }
+  function saveStats() { 
+    try { localStorage.setItem('aura_stats', JSON.stringify(stats)); } 
+    catch(e) {}
+  }
   
   const RANKS = [
     { min: 0, title: 'NOVATO', color: '#888' },
@@ -301,18 +285,23 @@
     { min: 15, title: 'MAESTRO', color: '#ffd700' },
     { min: 25, title: 'LEYENDA', color: '#ff4d4d' }
   ];
+  
   function getRank(level) {
     let r = RANKS[0];
     for(let rk of RANKS) if(level >= rk.min) r = rk;
     return r;
   }
+  
   function updateRankUI() {
     const r = getRank(stats.bestLevel);
-    document.getElementById('rank-badge').textContent = r.title;
-    document.getElementById('rank-badge').style.color = r.color;
-    document.getElementById('rank-badge').style.borderColor = r.color + '40';
-    document.getElementById('menu-rank').textContent = r.title;
-    document.getElementById('menu-rank').style.color = r.color;
+    const badges = document.querySelectorAll('#rank-badge, #menu-rank');
+    badges.forEach(b => {
+      if(b) {
+        b.textContent = r.title;
+        b.style.color = r.color;
+        b.style.borderColor = r.color + '40';
+      }
+    });
   }
   updateRankUI();
 
@@ -320,16 +309,22 @@
   const game = {
     state: 'menu', level: 1, score: 0, combo: 0, comboTimer: 0,
     levelTrans: 0, shake: 0, slowMo: 1, hue: 220, hueTarget: 220,
-    timer: 0, totalStars: 5, collectedStars: 0,
-    trailBounces: 0
+    timer: 0, totalStars: 5, collectedStars: 0, trailBounces: 0
   };
 
   // PLAYER
-  const player = { x: 0, y: 0, vx: 0, vy: 0, r: 11, trail: [], maxTrail: 80, alive: true, phase: 0, glow: 1 };
+  const player = { x: W * 0.5, y: H * 0.35, vx: 0, vy: 0, r: 11, trail: [], maxTrail: 80, alive: true, phase: 0, glow: 1 };
+  
   let stars = [], obstacles = [], platforms = [], particles = [], bgP = [], trailSegs = [];
   const input = { active: false, x: 0, y: 0 };
 
-  function handleStart(x,y) { initAudio(); input.active = true; input.x = x; input.y = y; if(game.state==='playing') SFX.pulse(); }
+  function handleStart(x,y) { 
+    initAudio(); 
+    input.active = true; 
+    input.x = x; 
+    input.y = y; 
+    if(game.state==='playing') SFX.pulse(); 
+  }
   function handleMove(x,y) { if(input.active) { input.x = x; input.y = y; } }
   function handleEnd() { input.active = false; }
 
@@ -341,10 +336,16 @@
   canvas.addEventListener('mouseup', e => { e.preventDefault(); handleEnd(); });
   canvas.addEventListener('mouseleave', handleEnd);
 
-  function formatTime(s) { const m=Math.floor(s/60), sec=Math.floor(s%60); return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`; }
+  function formatTime(s) { 
+    const m=Math.floor(s/60), sec=Math.floor(s%60); 
+    return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`; 
+  }
+  
   function updateObjective() {
-    document.getElementById('objective').innerHTML = `⭐ <span>${game.collectedStars}</span> / ${game.totalStars} estrellas`;
-    document.getElementById('progress-bar').style.width = `${(game.collectedStars/game.totalStars)*100}%`;
+    const obj = document.getElementById('objective');
+    if(obj) obj.innerHTML = `⭐ <span>${game.collectedStars}</span> / ${game.totalStars} estrellas`;
+    const bar = document.getElementById('progress-bar');
+    if(bar) bar.style.width = `${(game.collectedStars/game.totalStars)*100}%`;
   }
 
   function genLevel(lvl) {
@@ -358,9 +359,8 @@
     const diff = Math.min(lvl, 40);
     game.totalStars = 3 + Math.floor(diff * 0.5);
     
-    // Estrellas: una siempre arriba para forzar uso del rastro
     for(let i=0; i<game.totalStars; i++) {
-      const isHigh = i === 0 && lvl > 2; // Primera estrella alta en niveles > 2
+      const isHigh = i === 0 && lvl > 2;
       stars.push({ 
         x: 60+Math.random()*(W-120), 
         y: isHigh ? 80+Math.random()*60 : 100+Math.random()*(H*0.5), 
@@ -381,22 +381,19 @@
       });
     }
     
-    document.getElementById('level-display').textContent = `NIVEL ${lvl}`;
+    const lvlEl = document.getElementById('level-display');
+    if(lvlEl) lvlEl.textContent = `NIVEL ${lvl}`;
     updateObjective();
-    document.getElementById('timer').textContent = '00:00';
-    
-    // Mostrar hint del rastro en niveles bajos
-    if(lvl <= 3) {
-      document.getElementById('trail-hint').classList.add('visible');
-      setTimeout(()=> document.getElementById('trail-hint').classList.remove('visible'), 4000);
-    }
+    const timerEl = document.getElementById('timer');
+    if(timerEl) timerEl.textContent = '00:00';
   }
 
   function update(dt) {
     if (game.state !== 'playing') return;
     const s = dt * game.slowMo;
     game.timer += dt;
-    document.getElementById('timer').textContent = formatTime(game.timer);
+    const timerEl = document.getElementById('timer');
+    if(timerEl) timerEl.textContent = formatTime(game.timer);
 
     player.phase += s * 2.5;
     player.vy += 420 * s;
@@ -421,13 +418,11 @@
     if (player.trail.length > player.maxTrail) player.trail.pop();
     for(let p of player.trail) p.t += s;
 
-    // Walls
     if (player.x < player.r) { player.x = player.r; player.vx *= -0.4; }
     if (player.x > W - player.r) { player.x = W - player.r; player.vx *= -0.4; }
     if (player.y < player.r) { player.y = player.r; player.vy *= -0.4; }
     if (player.y > H + 50) kill();
 
-    // TRAIL COLLISION (Improved & Clear)
     trailSegs = [];
     for(let i=0; i<player.trail.length-3; i+=4) {
       const p1 = player.trail[i], p2 = player.trail[i+4] || player.trail[player.trail.length-1];
@@ -436,14 +431,13 @@
         const len = Math.hypot(p2.x-p1.x, p2.y-p1.y) + 8;
         trailSegs.push({x: mx, y: my, w: len, h: 8, a: Math.max(0, 1 - p1.t/6)});
         
-        // Bounce detection
         if (Math.abs(player.y - my) < 18 && Math.abs(player.x - mx) < len/2 && player.vy > 0) {
           player.y = my - 4 - player.r;
           player.vy = -player.vy * 0.75;
           player.glow = Math.min(player.glow + 0.4, 2.2);
           game.trailBounces++;
           SFX.bounce();
-          spawnP(player.x, player.y + player.r, 6, 0, 2); // White sparks
+          spawnP(player.x, player.y + player.r, 6, 0, 2);
         }
       }
     }
@@ -471,13 +465,21 @@
         SFX.collect();
         spawnP(star.x, star.y, 18, game.hue + 25, 4);
         game.shake = 3;
-        document.getElementById('score-display')?.textContent = game.score;
         updateObjective();
         const cEl = document.getElementById('combo-display');
-        if(game.combo > 1) { cEl.textContent = `COMBO x${game.combo}`; cEl.classList.add('visible'); }
+        if(cEl && game.combo > 1) { 
+          cEl.textContent = `COMBO x${game.combo}`; 
+          cEl.classList.add('visible'); 
+        }
       }
     }
-    if (game.comboTimer > 0) { game.comboTimer -= dt; if(game.comboTimer <= 0) { game.combo = 0; document.getElementById('combo-display').classList.remove('visible'); } }
+    if (game.comboTimer > 0) { 
+      game.comboTimer -= dt; 
+      if(game.comboTimer <= 0) { 
+        const cEl = document.getElementById('combo-display');
+        if(cEl) cEl.classList.remove('visible'); 
+      } 
+    }
 
     if (allCol && game.state === 'playing') {
       game.state = 'transition'; game.levelTrans = 1; SFX.levelUp();
@@ -490,11 +492,11 @@
   }
 
   function kill() {
-    if (!player.alive) return; player.alive = false;
+    if (!player.alive) return; 
+    player.alive = false;
     game.shake = 10; game.slowMo = 0.2; SFX.death();
     spawnP(player.x, player.y, 35, game.hue, 5);
     
-    // Save stats
     if (game.level > stats.bestLevel) stats.bestLevel = game.level;
     if (game.combo > stats.bestCombo) stats.bestCombo = game.combo;
     stats.totalStars += game.collectedStars;
@@ -505,12 +507,18 @@
 
     setTimeout(() => {
       game.state = 'dead'; game.slowMo = 1;
-      document.getElementById('finalScore').textContent = game.score;
-      document.getElementById('finalMeta').textContent = `Nivel ${game.level} · ${formatTime(game.timer)} · Rebotes: ${game.trailBounces}`;
-      const r = getRank(stats.bestLevel);
-      document.getElementById('final-rank').textContent = r.title;
-      document.getElementById('final-rank').style.color = r.color;
-      document.getElementById('gameover').classList.add('visible');
+      const fs = document.getElementById('finalScore');
+      const fm = document.getElementById('finalMeta');
+      const fr = document.getElementById('final-rank');
+      const go = document.getElementById('gameover');
+      if(fs) fs.textContent = game.score;
+      if(fm) fm.textContent = `Nivel ${game.level} · ${formatTime(game.timer)} · Rebotes: ${game.trailBounces}`;
+      if(fr) {
+        const r = getRank(stats.bestLevel);
+        fr.textContent = r.title;
+        fr.style.color = r.color;
+      }
+      if(go) go.classList.add('visible');
     }, 700);
   }
 
@@ -520,7 +528,11 @@
       particles.push({x,y, vx:Math.cos(a)*v, vy:Math.sin(a)*v, life:1, dec:0.018+Math.random()*0.02, r:1+Math.random()*2.5, h:hue});
     }
   }
-  function initBg() { bgP = []; for(let i=0;i<35;i++) bgP.push({x:Math.random()*W, y:Math.random()*H, r:0.8+Math.random()*1.5, a:0.1+Math.random()*0.25, vx:(Math.random()-0.5)*0.25, vy:-0.08-Math.random()*0.3, ph:Math.random()*6.28}); }
+  
+  function initBg() { 
+    bgP = []; 
+    for(let i=0;i<35;i++) bgP.push({x:Math.random()*W, y:Math.random()*H, r:0.8+Math.random()*1.5, a:0.1+Math.random()*0.25, vx:(Math.random()-0.5)*0.25, vy:-0.08-Math.random()*0.3, ph:Math.random()*6.28}); 
+  }
   initBg();
 
   function updateP(dt) {
@@ -563,20 +575,17 @@
         ctx.translate(ox,oy);ctx.fillStyle='rgba(255,60,60,0.6)';ctx.shadowColor='rgba(255,60,60,0.6)';ctx.shadowBlur=12;rr(ctx,-o.w/2,-o.h/2,o.w,o.h,4);ctx.fill();
         ctx.fillStyle='rgba(255,100,100,0.2)';rr(ctx,-o.w/2+2,-o.h/2+2,o.w-4,o.h-4,3);ctx.fill();ctx.restore();}
 
-      // TRAIL RENDERING (Clear States)
       if(player.trail.length>1 && player.alive){
         for(let i=1;i<player.trail.length;i++){
           const p1=player.trail[i-1], p2=player.trail[i], age=p1.t, al=Math.max(0,1-age/6);
           const solid = age>1.2;
           ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);
           if(solid) {
-            // SOLID: Bright cyan, thicker, glowing
             ctx.strokeStyle = `rgba(0, 242, 254, ${al * 0.8})`;
             ctx.lineWidth = 7 * al;
             ctx.shadowColor = `rgba(0, 242, 254, ${al})`;
             ctx.shadowBlur = 15 * al;
           } else {
-            // FRESH: Faint white/blue, thin
             ctx.strokeStyle = `rgba(150, 200, 255, ${al * 0.3})`;
             ctx.lineWidth = 3 * al;
             ctx.shadowColor = 'transparent';
@@ -586,7 +595,6 @@
         }
       }
 
-      // Guide line to closest star
       let closest = null, cDist = Infinity;
       for(let s of stars) { if(!s.col) { const d=Math.hypot(player.x-s.x, player.y-s.y); if(d<cDist){cDist=d; closest=s;} } }
       if(closest) {
@@ -655,37 +663,63 @@
   document.addEventListener('visibilitychange', ()=>{hidden=document.hidden;});
   requestAnimationFrame(loop);
 
-  // UI BUTTONS
-  document.getElementById('startBtn').addEventListener('click', ()=>{
-    game.state='playing'; game.score=0;
-    document.getElementById('menu').classList.add('hidden');
-    genLevel(1);
-  });
-  document.getElementById('retryBtn').addEventListener('click', ()=>{
-    game.state='playing'; game.score=0;
-    document.getElementById('combo-display').classList.remove('visible');
-    document.getElementById('gameover').classList.remove('visible');
-    genLevel(1);
-  });
-  
-  // STATS SCREEN
-  function showStats() {
-    document.getElementById('stats-content').innerHTML = `
-      <div class="stat-box"><div class="stat-val">${stats.bestLevel}</div><div class="stat-label">MEJOR NIVEL</div></div>
-      <div class="stat-box"><div class="stat-val">${stats.totalStars}</div><div class="stat-label">ESTRELLAS</div></div>
-      <div class="stat-box"><div class="stat-val">${stats.bestCombo}</div><div class="stat-label">MEJOR COMBO</div></div>
-      <div class="stat-box"><div class="stat-val">${stats.totalScore}</div><div class="stat-label">PUNTOS TOTALES</div></div>
-    `;
-    document.getElementById('stats-screen').classList.remove('hidden');
-    document.getElementById('menu').classList.add('hidden');
-    document.getElementById('gameover').classList.remove('visible');
+  // BUTTONS - Simplified and robust
+  const startBtn = document.getElementById('startBtn');
+  const retryBtn = document.getElementById('retryBtn');
+  const statsBtn = document.getElementById('statsBtn');
+  const statsBtn2 = document.getElementById('statsBtn2');
+  const closeStatsBtn = document.getElementById('closeStatsBtn');
+  const menuEl = document.getElementById('menu');
+  const statsEl = document.getElementById('stats-screen');
+  const gameoverEl = document.getElementById('gameover');
+
+  if(startBtn) {
+    startBtn.addEventListener('click', function() {
+      console.log('Start button clicked');
+      initAudio();
+      game.state = 'playing';
+      game.score = 0;
+      if(menuEl) menuEl.classList.add('hidden');
+      genLevel(1);
+    });
   }
-  document.getElementById('statsBtn').addEventListener('click', showStats);
-  document.getElementById('statsBtn2').addEventListener('click', showStats);
-  document.getElementById('closeStatsBtn').addEventListener('click', ()=>{
-    document.getElementById('stats-screen').classList.add('hidden');
-    if(game.state === 'menu') document.getElementById('menu').classList.remove('hidden');
-  });
+  
+  if(retryBtn) {
+    retryBtn.addEventListener('click', function() {
+      game.state = 'playing';
+      game.score = 0;
+      const cEl = document.getElementById('combo-display');
+      if(cEl) cEl.classList.remove('visible');
+      if(gameoverEl) gameoverEl.classList.remove('visible');
+      genLevel(1);
+    });
+  }
+  
+  function showStats() {
+    const sc = document.getElementById('stats-content');
+    if(sc) {
+      sc.innerHTML = `
+        <div class="stat-box"><div class="stat-val">${stats.bestLevel}</div><div class="stat-label">MEJOR NIVEL</div></div>
+        <div class="stat-box"><div class="stat-val">${stats.totalStars}</div><div class="stat-label">ESTRELLAS</div></div>
+        <div class="stat-box"><div class="stat-val">${stats.bestCombo}</div><div class="stat-label">MEJOR COMBO</div></div>
+        <div class="stat-box"><div class="stat-val">${stats.totalScore}</div><div class="stat-label">PUNTOS TOTALES</div></div>
+      `;
+    }
+    if(statsEl) statsEl.classList.remove('hidden');
+    if(menuEl) menuEl.classList.add('hidden');
+    if(gameoverEl) gameoverEl.classList.remove('visible');
+  }
+  
+  if(statsBtn) statsBtn.addEventListener('click', showStats);
+  if(statsBtn2) statsBtn2.addEventListener('click', showStats);
+  if(closeStatsBtn) {
+    closeStatsBtn.addEventListener('click', function() {
+      if(statsEl) statsEl.classList.add('hidden');
+      if(game.state === 'menu' && menuEl) menuEl.classList.remove('hidden');
+    });
+  }
+  
+  console.log('Game initialized, buttons:', {startBtn: !!startBtn, retryBtn: !!retryBtn});
 })();
 </script>
 </body>
