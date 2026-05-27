@@ -217,7 +217,9 @@
     player.x = W * 0.5; player.y = H * 0.85;
     player.vx = 0; player.vy = 0; player.trail = []; player.alive = true; player.glow = 1;
     game.level = lvl; game.combo = 0; game.comboTimer = 0;
-    game.state = 'transition'; game.levelTrans = 1;
+    // FIX: NO cambiar a transition, mantener playing para que responda inputs
+    game.state = 'playing'; 
+    game.levelTrans = 0; // Sin transición visual que bloquee
     game.hueTarget = (220 + lvl * 17) % 360;
 
     const diff = Math.min(lvl, 45);
@@ -240,9 +242,7 @@
     for(let i=0; i<nPlat; i++) platforms.push({ x: 40+Math.random()*(W-80), y: 90+Math.random()*(H*0.45), w: 45+Math.random()*75, h: 5, a: 0.25 });
 
     document.getElementById('level-display').textContent = `NIVEL ${lvl}`;
-    setTimeout(() => { game.state = 'playing'; }, 800);
-  }
-
+}
   // PHYSICS
   function update(dt) {
     if (game.state !== 'playing') return;
