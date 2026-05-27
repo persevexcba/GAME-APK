@@ -109,16 +109,14 @@
   }
   @keyframes fadeOut { to { opacity: 0; } }
   
-  /* Debug visual */
   #debug-input {
     position: fixed;
     bottom: 10px;
     right: 10px;
-    color: #0f0;
+    color: #888;
     font-size: 10px;
     pointer-events: none;
     z-index: 100;
-    opacity: 0.5;
   }
 </style>
 </head>
@@ -218,7 +216,7 @@
   // ENTITIES
   let stars = [], obstacles = [], platforms = [], particles = [], bgP = [], trailSegs = [];
 
-  // INPUT - FIXED: Capturar eventos en document también
+  // INPUT
   const input = { active: false, x: 0, y: 0 };
 
   function handleStart(x,y) {
@@ -245,7 +243,6 @@
     debugEl.style.color = '#888';
   }
 
-  // FIX: Agregar listeners al canvas Y al document
   canvas.addEventListener('touchstart', e => { e.preventDefault(); handleStart(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
   canvas.addEventListener('touchmove', e => { e.preventDefault(); handleMove(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
   canvas.addEventListener('touchend', e => { e.preventDefault(); handleEnd(); }, {passive:false});
@@ -286,28 +283,35 @@
     document.getElementById('level-display').textContent = `NIVEL ${lvl}`;
   }
 
-  // PHYSICS
+  // PHYSICS - FIX: Fuerza mucho más fuerte
   function update(dt) {
     if (game.state !== 'playing') return;
     const s = dt * game.slowMo;
 
     player.phase += s * 2.8;
-    player.vy += 600 * s;
+    
+    // FIX: Gravedad reducida de 600 a 450
+    player.vy += 450 * s;
 
     if (input.active) {
       const dx = input.x - player.x;
       const dy = input.y - player.y;
       const d = Math.hypot(dx, dy);
       if (d > 4) {
-        const f = Math.min(d * 1.8, 550);
+        // FIX: Fuerza aumentada de 1.8 a 5.0 y max de 550 a 1200
+        const f = Math.min(d * 5.0, 1200);
         player.vx += (dx/d) * f * s;
-        player.vy += (dy/d) * f * s * 0.35;
+        // FIX: Sin multiplicador 0.35 en Y - atrae igual en todas direcciones
+        player.vy += (dy/d) * f * s;
       }
     }
 
-    player.vx *= 0.96; player.vy *= 0.994;
+    // FIX: Más resistencia al aire para controlar mejor
+    player.vx *= 0.95; 
+    player.vy *= 0.98;
+    
     const spd = Math.hypot(player.vx, player.vy);
-    if (spd > 480) { player.vx = (player.vx/spd)*480; player.vy = (player.vy/spd)*480; }
+    if (spd > 600) { player.vx = (player.vx/spd)*600; player.vy = (player.vy/spd)*600; }
 
     player.x += player.vx * s; player.y += player.vy * s;
 
