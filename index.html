@@ -15,12 +15,16 @@
     user-select: none;
     font-family: 'Segoe UI', system-ui, sans-serif;
     height: 100%;
+    width: 100%;
   }
   canvas {
-    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
     touch-action: none;
+    z-index: 1;
   }
   #ui {
     position: fixed;
@@ -85,6 +89,8 @@
     transition: all 0.2s;
     backdrop-filter: blur(8px);
     -webkit-tap-highlight-color: transparent;
+    z-index: 25;
+    position: relative;
   }
   .btn:active { background: rgba(255,255,255,0.12); transform: scale(0.96); }
   .stats { margin-top: 32px; color: rgba(255,255,255,0.25); font-size: 11px; letter-spacing: 2px; }
@@ -102,6 +108,18 @@
     animation: fadeOut 4s ease-in-out 1.5s forwards;
   }
   @keyframes fadeOut { to { opacity: 0; } }
+  
+  /* Debug visual */
+  #debug-input {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    color: #0f0;
+    font-size: 10px;
+    pointer-events: none;
+    z-index: 100;
+    opacity: 0.5;
+  }
 </style>
 </head>
 <body>
@@ -127,7 +145,8 @@
   <button class="btn" id="retryBtn">REINTENTAR</button>
 </div>
 
-<div id="instructions">MANTÉN PRESIONADO PARA GUIAR · SUELTA PARA INERCIAR</div>
+<div id="instructions">MANTÉN PRESIONADO Y ARRASTRA PARA GUIAR LA BOLA</div>
+<div id="debug-input">INPUT: INACTIVO</div>
 
 <script>
 (function() {
@@ -135,9 +154,8 @@
   
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
-  let W = window.innerWidth || 800;
-  let H = window.innerHeight || 600;
-  let dpr;
+  const debugEl = document.getElementById('debug-input');
+  let W = 800, H = 600, dpr;
 
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -154,20 +172,24 @@
   let audioCtx;
   function initAudio() {
     if (!audioCtx) {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+      } catch(e) { console.log('Audio no disponible'); }
     }
-    if (audioCtx.state === 'suspended') audioCtx.resume();
   }
   function playTone(freq, dur, type='sine', vol=0.08) {
     if (!audioCtx) return;
-    const o = audioCtx.createOscillator();
-    const g = audioCtx.createGain();
-    o.type = type;
-    o.frequency.value = freq;
-    g.gain.setValueAtTime(vol, audioCtx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
-    o.connect(g).connect(audioCtx.destination);
-    o.start(); o.stop(audioCtx.currentTime + dur);
+    try {
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = type;
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(vol, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(); o.stop(audioCtx.currentTime + dur);
+    } catch(e) {}
   }
   const SFX = {
     collect: () => { playTone(523, 0.12); setTimeout(()=>playTone(659, 0.12), 40); setTimeout(()=>playTone(784, 0.18, 'sine', 0.06), 80); },
@@ -196,19 +218,42 @@
   // ENTITIES
   let stars = [], obstacles = [], platforms = [], particles = [], bgP = [], trailSegs = [];
 
-  // INPUT
+  // INPUT - FIXED: Capturar eventos en document también
   const input = { active: false, x: 0, y: 0 };
 
-  function handleStart(x,y) { initAudio(); input.active = true; input.x = x; input.y = y; if(game.state==='playing') SFX.pulse(); }
-  function handleMove(x,y) { if(input.active) { input.x = x; input.y = y; } }
-  function handleEnd() { input.active = false; }
+  function handleStart(x,y) {
+    initAudio();
+    input.active = true;
+    input.x = x;
+    input.y = y;
+    if(game.state==='playing') SFX.pulse();
+    debugEl.textContent = 'INPUT: ACTIVO (' + x.toFixed(0) + ',' + y.toFixed(0) + ')';
+    debugEl.style.color = '#0f0';
+  }
+  
+  function handleMove(x,y) {
+    if(input.active) {
+      input.x = x;
+      input.y = y;
+      debugEl.textContent = 'INPUT: MOVIENDO (' + x.toFixed(0) + ',' + y.toFixed(0) + ')';
+    }
+  }
+  
+  function handleEnd() {
+    input.active = false;
+    debugEl.textContent = 'INPUT: INACTIVO';
+    debugEl.style.color = '#888';
+  }
 
+  // FIX: Agregar listeners al canvas Y al document
   canvas.addEventListener('touchstart', e => { e.preventDefault(); handleStart(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
   canvas.addEventListener('touchmove', e => { e.preventDefault(); handleMove(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
-  canvas.addEventListener('touchend', handleEnd, {passive:false});
-  canvas.addEventListener('mousedown', e => handleStart(e.clientX, e.clientY));
-  canvas.addEventListener('mousemove', e => handleMove(e.clientX, e.clientY));
-  canvas.addEventListener('mouseup', handleEnd);
+  canvas.addEventListener('touchend', e => { e.preventDefault(); handleEnd(); }, {passive:false});
+  
+  canvas.addEventListener('mousedown', e => { e.preventDefault(); handleStart(e.clientX, e.clientY); });
+  canvas.addEventListener('mousemove', e => { e.preventDefault(); handleMove(e.clientX, e.clientY); });
+  canvas.addEventListener('mouseup', e => { e.preventDefault(); handleEnd(); });
+  canvas.addEventListener('mouseleave', e => { handleEnd(); });
 
   // GENERATION
   function genLevel(lvl) {
@@ -379,7 +424,6 @@
     ctx.save();
     if(game.shake > 0) { ctx.translate((Math.random()-0.5)*game.shake, (Math.random()-0.5)*game.shake); game.shake *= 0.88; if(game.shake<0.1) game.shake=0; }
 
-    // FIX: Validar que W y H sean números válidos
     if (!isFinite(W) || !isFinite(H) || W <= 0 || H <= 0) {
       W = window.innerWidth || 800;
       H = window.innerHeight || 600;
@@ -420,7 +464,6 @@
         const pu = 0.75+0.25*Math.sin(s.ph);
         ctx.beginPath();ctx.arc(s.x,s.y,s.r*2.5*pu,0,Math.PI*2);ctx.fillStyle=`hsla(${game.hue+20},75%,55%,0.08)`;ctx.fill();
         
-        // FIX: Validar posiciones de estrellas
         if (isFinite(s.x) && isFinite(s.y) && isFinite(s.r * pu)) {
           ctx.beginPath();ctx.arc(s.x,s.y,s.r*pu,0,Math.PI*2);
           const sg=ctx.createRadialGradient(s.x,s.y,0,s.x,s.y,s.r*pu);
@@ -430,22 +473,19 @@
         }
       }
 
-      if(player.alive){
+      if(player.alive && isFinite(player.x) && isFinite(player.y)){
         const pu=1+0.09*Math.sin(player.phase), r=player.r*pu;
         const ar=r*3.8*player.glow;
         
-        // FIX: Validar posiciones del jugador
-        if (isFinite(player.x) && isFinite(player.y) && isFinite(r)) {
-          ctx.beginPath();ctx.arc(player.x,player.y,ar,0,Math.PI*2);
-          const ag=ctx.createRadialGradient(player.x,player.y,0,player.x,player.y,ar);
-          ag.addColorStop(0,`hsla(${game.hue},55%,75%,0.18)`);ag.addColorStop(1,'transparent');
-          ctx.fillStyle=ag;ctx.fill();
-          ctx.beginPath();ctx.arc(player.x,player.y,r,0,Math.PI*2);
-          const pg=ctx.createRadialGradient(player.x,player.y,0,player.x,player.y,r);
-          pg.addColorStop(0,'#ffffff');pg.addColorStop(0.35,`hsl(${game.hue},55%,88%)`);pg.addColorStop(1,`hsl(${game.hue},65%,60%)`);
-          ctx.fillStyle=pg;ctx.shadowColor=`hsl(${game.hue},75%,65%)`;ctx.shadowBlur=28*player.glow;ctx.fill();ctx.shadowBlur=0;
-          ctx.beginPath();ctx.arc(player.x-r*0.18,player.y-r*0.18,r*0.32,0,Math.PI*2);ctx.fillStyle='rgba(255,255,255,0.75)';ctx.fill();
-        }
+        ctx.beginPath();ctx.arc(player.x,player.y,ar,0,Math.PI*2);
+        const ag=ctx.createRadialGradient(player.x,player.y,0,player.x,player.y,ar);
+        ag.addColorStop(0,`hsla(${game.hue},55%,75%,0.18)`);ag.addColorStop(1,'transparent');
+        ctx.fillStyle=ag;ctx.fill();
+        ctx.beginPath();ctx.arc(player.x,player.y,r,0,Math.PI*2);
+        const pg=ctx.createRadialGradient(player.x,player.y,0,player.x,player.y,r);
+        pg.addColorStop(0,'#ffffff');pg.addColorStop(0.35,`hsl(${game.hue},55%,88%)`);pg.addColorStop(1,`hsl(${game.hue},65%,60%)`);
+        ctx.fillStyle=pg;ctx.shadowColor=`hsl(${game.hue},75%,65%)`;ctx.shadowBlur=28*player.glow;ctx.fill();ctx.shadowBlur=0;
+        ctx.beginPath();ctx.arc(player.x-r*0.18,player.y-r*0.18,r*0.32,0,Math.PI*2);ctx.fillStyle='rgba(255,255,255,0.75)';ctx.fill();
       }
 
       if(game.state==='transition' && game.levelTrans>0){
@@ -481,8 +521,22 @@
   document.addEventListener('visibilitychange', ()=>{hidden=document.hidden;});
   requestAnimationFrame(loop);
 
-  document.getElementById('startBtn').addEventListener('click', ()=>{game.state='playing';game.score=0;document.getElementById('score-display').textContent='0';document.getElementById('menu').classList.add('hidden');genLevel(1);});
-  document.getElementById('retryBtn').addEventListener('click', ()=>{game.state='playing';game.score=0;document.getElementById('score-display').textContent='0';document.getElementById('combo-display').classList.remove('visible');document.getElementById('gameover').classList.remove('visible');genLevel(1);});
+  document.getElementById('startBtn').addEventListener('click', ()=>{
+    game.state='playing';
+    game.score=0;
+    document.getElementById('score-display').textContent='0';
+    document.getElementById('menu').classList.add('hidden');
+    genLevel(1);
+  });
+  
+  document.getElementById('retryBtn').addEventListener('click', ()=>{
+    game.state='playing';
+    game.score=0;
+    document.getElementById('score-display').textContent='0';
+    document.getElementById('combo-display').classList.remove('visible');
+    document.getElementById('gameover').classList.remove('visible');
+    genLevel(1);
+  });
 })();
 </script>
 </body>
